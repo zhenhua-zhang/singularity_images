@@ -1,0 +1,148 @@
+Bootstrap: library
+From: ubuntu:20.04
+
+%setup
+  # mkdir -p ${SINGULARITY_ROOTFS}/opt/{GATK4.2.0,temp}
+
+
+%environment
+  export LC_ALL=C
+
+
+%post
+  # Create destination and temporary folder.
+  mkdir -p /opt/temp /opt/tools
+
+  # Refresh the apt repository
+  apt update -qq
+
+  # Install tzdata but in a non-interactive mode
+  echo 8 > /opt/temp/input.txt
+  echo 1 >> /opt/temp/input.txt
+  apt install -y tzdata < /opt/temp/input.txt
+  echo Europe/Amsterdam > /etc/timezone
+  ln -fs /usr/share/zoneinfo/Europe/Amsterdam /etc/localtime
+
+  # Essential (maybe) packages
+  apt install -y --no-install-recommends wget gcc g++ gdb gfortran git gzip zip make cmake autoconf automake \
+    fossil libbz2-dev liblzma-dev libgomp1 zlib1g-dev libboost-iostreams-dev \
+    python3 python3-dev python2 python2-dev r-base openjdk-8-jre-headless
+
+  # Install R packages (TODO)
+
+  # Install Python packages, pip, virtualenv (Python2.7)
+  apt install -y --no-install-recommends python3-pip
+  wget -cO /opt/temp/get-pip.py https://bootstrap.pypa.io/pip/2.7/get-pip.py
+  python2 /opt/temp/get-pip.py
+  python2 -m pip install virtualenv
+
+  # Install ldsc
+  mkdir -p /opt/tools/ldsc/1.0.3
+  python2 -m virtualenv /opt/tools/ldsc/.ldsc_venv
+  . /opt/tools/ldsc/.ldsc_venv/bin/activate
+  python2 -m pip install bitarray==0.8 nose==1.3 pybedtools==0.7 scipy==0.18 numpy==1.16 pandas==0.20
+  git clone https://github.com/bulik/ldsc.git /opt/temp/ldsc
+  cd /opt/temp/ldsc && python2 setup.py install
+  cp /opt/temp/ldsc/ldsc.py /opt/temp/ldsc/munge_sumstats.py /opt/temp/ldsc/make_annot.py /opt/tools/ldsc/1.0.3
+  echo '#!/usr/bin/env bash' > /usr/local/bin/ldsc
+  echo 'source /opt/tools/ldsc/.ldsc_venv/bin/activate && ldsc.py "$@"' >> /usr/local/bin/ldsc
+  echo '#!/usr/bin/env bash' > /usr/local/bin/munge_sumstats
+  echo 'source /opt/tools/ldsc/.ldsc_venv/bin/activate && munge_sumstats.py "$@"' >> /usr/local/bin/munge_sumstats
+  chmod 755 /usr/local/bin/ldsc /usr/local/bin/munge_sumstats
+
+  # Install BGEN
+  mkdir -p /opt/tools/bgen/1.1.7
+  wget -cO /opt/temp/v1.1.7.tgz http://code.enkre.net/bgen/tarball/release/v1.1.7
+  tar xf /opt/temp/v1.1.7.tgz -C /opt/temp
+  cd /opt/temp/v1.1.7
+  python3 waf configure --prefix=/opt/tools/bgen/1.1.7 && python3 waf && python3 waf install
+  ln -s /opt/tools/bgen/1.1.7/bin/bgenix /usr/local/bin/bgenix
+  ln -s /opt/tools/bgen/1.1.7/bin/cat-bgen /usr/local/bin/cat-bgen
+
+  # Install regenie dependented on BGEN
+  mkdir -p /opt/tools/regenie
+  wget -cO /opt/temp/regenie_v3.2.8.zip https://github.com/rgcgithub/regenie/archive/refs/tags/v3.2.8.zip
+  unzip /opt/temp/regenie_v3.2.8.zip -d /opt/temp
+  cd /opt/temp/regenie-3.2.8
+  BGEN_PATH=/opt/temp/v1.1.7 HAS_BOOST_IOSTREAM=1 STATIC=1 cmake -DCMAKE_INSTALL_PREFIX=/opt/tools/regenie/3.2.8 .
+  make && make install
+  ln -s /opt/tools/regenie/3.2.8/bin/regenie /usr/local/bin/regenie
+
+  # Install bcftools
+  mkdir -p /opt/tools/bcftools/1.17
+  wget -cO /opt/temp/bcftools-1.17.tar.bz2 https://github.com/samtools/bcftools/releases/download/1.17/bcftools-1.17.tar.bz2
+  tar xf /opt/temp/bcftools-1.17.tar.bz2 -C /opt/temp
+  cd /opt/temp/bcftools-1.17
+  ./configure --prefix=/opt/tools/bcftools/1.17
+  make && make install
+  ln -s /opt/tools/bcftools/1.17/bin/bcftools /usr/local/bin/bcftools
+
+  # Install PLINK1.9
+  mkdir -p /opt/tools/plink/1.9
+  wget -cO /opt/temp/plink_linux_x86_64_20230116.zip https://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20230116.zip
+  unzip /opt/temp/plink_linux_x86_64_20230116.zip -d /opt/tools/plink/1.9
+  ln -s /opt/tools/plink/1.9/plink /usr/local/bin/plink1.9
+
+  # Install PLINK2.0
+  mkdir -p /opt/tools/plink/2.0
+  wget -cO /opt/temp/plink2_linux_x86_64_20231030.zip https://s3.amazonaws.com/plink2-assets/alpha5/plink2_linux_x86_64_20231030.zip
+  unzip /opt/temp/plink2_linux_x86_64_20231030.zip -d /opt/tools/plink/2.0
+  ln -s /opt/tools/plink/2.0/plink2 /usr/local/bin/plink2.0
+
+  # Install ADMIXTURE
+  mkdir -p /opt/tools/admixture/1.3.0
+  wget -cO /opt/temp/admixture_linux-1.3.0.tar.gz https://dalexander.github.io/admixture/binaries/admixture_linux-1.3.0.tar.gz
+  tar xf /opt/temp/admixture_linux-1.3.0.tar.gz -C /opt/temp
+  mv /opt/temp/dist/admixture_linux-1.3.0/* /opt/tools/admixture/1.3.0
+  ln -s /opt/tools/admixture/1.3.0/admixture /usr/local/bin/admixture
+
+  # Install qctool
+  mkdir -p /opt/tools/qctool/2.2.1
+  wget -cO /opt/temp/qctool_v2.2.0-CentOS_Linux7.8.2003-x86_64.tgz https://www.well.ox.ac.uk/~gav/resources/qctool_v2.2.0-CentOS_Linux7.8.2003-x86_64.tgz
+  tar xf /opt/temp/qctool_v2.2.0-CentOS_Linux7.8.2003-x86_64.tgz -C /opt/temp
+  mv "/opt/temp/qctool_v2.2.0-CentOS Linux7.8.2003-x86_64/"* /opt/tools/qctool/2.2.1
+  ln -s /opt/tools/qctool/2.2.1/qctool /usr/local/bin/qctool
+
+  # Install GCTA
+  mkdir -p /opt/tools/GCTA/1.94.1
+  wget -cO /opt/temp/gcta-1.94.1-linux-x86_64-static https://github.com/jianyangqt/gcta/releases/download/v1.94.1/gcta-1.94.1-linux-x86_64-static
+  mv /opt/temp/gcta-1.94.1-linux-x86_64-static /opt/tools/GCTA/1.94.1/
+  chmod 755 /opt/tools/GCTA/1.94.1/gcta-1.94.1-linux-x86_64-static
+  ln -s /opt/tools/GCTA/1.94.1/gcta-1.94.1-linux-x86_64-static /usr/local/bin/gcta
+
+  # Install SMR, GCTA-COJO TODO
+  # Install GEMMA TODO
+  # Install BOLT-LMM TODO
+  # Install QTLtools TODO
+  # Install FastQTL TODO
+  # Install MAGMA TODO
+
+  # Clean up
+  apt autoremove && apt clean
+  cd /opt/tools && rm -fr /opt/temp /root/.cache/*
+
+
+%labels
+  Author: Zhenhua Zhang
+  E-mail: zhenhua.zhang217@gmail.com
+  Version: v1.0.0
+
+
+%help
+  A singularity container including pipeline tools that process genome-wide association studies.
+
+  For the current version, the following packages are included:
+  +-------------------------------------------------------+
+  | Tool        | Version   | Sub-commands  | Path        |
+  | :---------: | :-------: | :-----------: | :---------: |
+  | admixture   | 1.3.0     |               |             |
+  | PLINK       | 1.9, 2.0  |               |             |
+  | regenie     | 3.2.8     |               |             |
+  | GCTA        | 1.94.1    |               |             |
+  | qctool      | 2.2.1     |               |             |
+  | bgen        | 1.1.7     |               |             |
+  | BCFtools    | 1.17      |               |             |
+  | LDSC        | 0.5.2     |               |             |
+  +-------------------------------------------------------+
+
+  Contact: zhenhua.zhang217@gmail.com

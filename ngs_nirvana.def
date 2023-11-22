@@ -1,0 +1,69 @@
+BootStrap: library
+From: ubuntu:18.04
+
+
+%setup
+  # mkdir -p /opt/tools
+
+
+%environment
+  export LC_ALL=C
+
+
+%post
+  # Check where we are
+  pwd
+
+  # Folders to store temporary and final files
+  mkdir -p /opt/temp /opt/tools/nirvana /opt/data
+  apt update -qq
+
+  # Install tzdata but in a non-interactive mode
+  echo 8 > /opt/temp/input.txt
+  echo 1 >> /opt/temp/input.txt
+  apt install -y tzdata < /opt/temp/input.txt
+  echo Europe/Amsterdam > /etc/timezone
+  ln -fs /usr/share/zoneinfo/Europe/Amsterdam /etc/localtime
+
+  # Essential (maybe) packages
+  apt install -y wget gcc g++ gdb gfortran git gzip zip make autoconf automake
+
+  # Install Microsoft GPG key
+  wget https://packages.microsoft.com/config/ubuntu/18.04/packages-microsoft-prod.deb -O /opt/temp/packages-microsoft-prod.deb
+  dpkg -i /opt/temp/packages-microsoft-prod.deb
+  rm -f /opt/temp/packages-microsoft-prod.deb
+
+  # Install Microsoft .NET Core SDK
+  apt update -qq
+  apt install -y dotnet-sdk-6.0 aspnetcore-runtime-6.0
+
+  # Install Nirvana
+  cd /opt/temp
+  git clone https://github.com/Illumina/Nirvana.git
+  cd Nirvana
+  dotnet build -c Release
+  mv /opt/temp/Nirvana/bin/Release/net6.0/* /opt/tools/nirvana
+  cd -
+
+  # Download reference files
+  # dotnet /opt/tools/nirvana//Downloader.dll --ga both -o /opt/data
+  # Please download the file manually and put it locally due to the huge size of the file.
+
+  # Clean up
+  apt clean
+  apt autoremove
+  rm -fr /opt/temp
+
+
+%labels
+  Author: Zhenhua Zhang
+  E-mail: zhenhua.zhang217@gmail.com
+  Version: v0.1.0
+
+
+%help
+  A singularity container including dependencies to run Nirvana, which is a c-charp program to perform clinical-grade
+  annotation of genomic variants (SNVs, MNVs, insertions, deletions, indels, STRs, gene fusions, CMVs, and SVs).
+  For more information, please visit https://illumina.github.io/NirvanaDocumentation
+
+# vim: set nu rnu:
